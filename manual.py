@@ -1,3 +1,7 @@
+#This script contains the manual calculation of the DCT coeffiencients of 8*8 pixel block
+import numpy as np
+import math 
+
 def computeDCT(block8_8): 
     block8_8 = block8_8.astype(float) - 128 #Shifted so that the pixel value is centered aroud 0 
     DCT_8_8 = np.zeros((8,8)) #Initialize the Coeffiient matrix for 8*8 cosine frequency block 
