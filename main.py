@@ -2,19 +2,23 @@ from PIL import Image
 import numpy as np
 import math
 from scipy.fftpack import dct
+from scipy.fftpack import idct
 import matplotlib.pyplot as plt
 
 
 
-Quantanization_table = \
-[[ 1,  1,  1,  2,  3,  5,  7,  8],
- [ 1,  1,  2,  2,  4,  7,  8,  7],
- [ 1,  2,  2,  3,  5,  8,  9,  7],
- [ 2,  2,  3,  4,  7, 22, 31,  9],
- [ 3,  4,  5,  7,  9, 25, 24, 32],
- [ 5,  7,  8, 32, 23, 24, 26, 22],
- [ 7,  8,  9, 32, 24, 26, 26, 23],
- [ 8,  7,  7,  9, 32, 22, 23, 23]]
+
+Quantization_table = \
+[[1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1],
+ [1, 1, 1, 1, 1, 1, 1, 1]]
+
+
 
 # Quantanization_table = \
 # [[ 2,  2,  2,  4,  6, 10, 14, 16],
@@ -130,14 +134,14 @@ class wrangling:
         DCT_padded = np.zeros_like(padded)
         for i in range(0, padded.shape[0], 8):
             for j in range(0, padded.shape[1], 8):
-                DCT_padded[i:i+8,j:j+8] = Op.blockDCT(padded[i:i+8,j:j+8]) // Quantanization_table
+                DCT_padded[i:i+8,j:j+8] = Op.blockDCT(padded[i:i+8,j:j+8]) // Quantization_table
         return DCT_padded
 
-    def pad(self, to_pad):
+    def pad(self, to_pad,x,y):
         
         pad_x = (8 - x % 8) % 8
         pad_y = (8 - y % 8) % 8
-        return np.pad(to_pad, ((0,pad_x),(0,pad_y)), mode='constant', constant_values=0)
+        return np.pad(to_pad, ((0,pad_x),(0,pad_y)), mode='constant', constant_values=0),x+pad_x,y+pad_y
 
     def blockify(self,mat):
         ans = []
@@ -168,22 +172,23 @@ img = Image.fromarray(Downsampled_Cb)
 target = Y
 
 #Step:2 DCT and quantanization 
-x,y = target.shape[0:2] #Preserving the dimension of the target before padding
+OriginalRow,OriginalCol = target.shape[0:2] #Preserving the dimension of the target before padding
 
 #Using scippy fft to perform DCT
 # DCT Padded    - DCT on the paded target where target  can by Y Cb or Cr. The padding is done so that we can have 8*8 blocks of whole image
 # DCT          - Actual Discrete Cosine Transform of the whole picture
 # imgdata      - Compressed Image Data
 
-target_padded = Op.pad(target)
+target_padded,PaddedRow,PaddedCol = Op.pad(target,OriginalRow,OriginalCol)
 DCT_padded = Op.PaddingAndDCT(target_padded)
-DCT = DCT_padded[:x,:y]
-image = Image.fromarray(DCT)
+DCT = DCT_padded[:OriginalRow,:OriginalCol]
+
+#image = Image.fromarray(DCT)
 imgdata = Op.blockify(DCT_padded)
 print(f"{DCT_padded.size} --> {len(imgdata)}")
 print("Compression ratio ",  len(imgdata)/DCT_padded.size)
 
-img = Image.fromarray(DCT)
+img = Image.fromarray(target)
 img.show()
 
 
@@ -217,59 +222,94 @@ img.show()
 # # plt.show()
 
 class Decompression:
-    def unPack0FromList(self,list):
+    def unPack0FromList(self, lst):
         arr = []
         ptr0 = 0
-        while (ptr0 < len(list)):
-            if(ptr0+1 < len(list) and list[ptr0] == 0):
-                for i in range (0,int(list[ptr0+1])):
+        while ptr0 < len(lst):
+            if ptr0 + 1 < len(lst) and lst[ptr0] == 0:
+                for i in range(int(lst[ptr0 + 1])):
                     arr.append(0)
                 ptr0 += 2
-                
-            else :
-                arr.append(list[ptr0])
+            else:
+                arr.append(lst[ptr0])
                 ptr0 += 1
         return arr
-    
 
-    def inverse_zigzag(self,arr, n):
-    # prepare empty n×n matrix
+    def inverse_zigzag(self, arr, n):
         matrix = [[0]*n for _ in range(n)]
         index = 0
         for d in range(2 * n - 1):
             temp_positions = []
-            # calculate starting r,c for diagonal 'd'
             r = 0 if d < n else d - n + 1
             c = d if d < n else n - 1
-            # collect positions (r,c) visited for this diagonal
             while r < n and c >= 0:
                 temp_positions.append((r, c))
                 r += 1
                 c -= 1
-            # even diagonals were reversed during zigzag traversal
             if d % 2 == 0:
                 temp_positions.reverse()
-            # now fill these positions from arr
             for (r, c) in temp_positions:
                 matrix[r][c] = arr[index]
                 index += 1
         return matrix
 
 
+    def reconstruct_imageblocks(self, unpacked_img_data, paddedRow, paddedCol):
+        rows_of_blocks = paddedRow // 8
+        cols_of_blocks = paddedCol // 8
 
+        # Initialize big matrix
+        bigMatrix = [[0 for _ in range(paddedCol)] for _ in range(paddedRow)]
+
+        start = 0
+        block_index = 0
+        total_blocks = rows_of_blocks * cols_of_blocks
+
+        for br in range(rows_of_blocks):
+            for bc in range(cols_of_blocks):
+                if start >= len(unpacked_img_data):
+                    
+                    break
+                block = self.inverse_zigzag(unpacked_img_data[start:start+64], 8)
+              
+                block = [[float(x) for x in row] for row in block]  # convert to float
+                start += 64
+
+                # Place 8x8 block in bigMatrix
+                for i in range(8):
+                    for j in range(8):
+                        bigMatrix[br*8 + i][bc*8 + j] = block[i][j]
+
+                block_index += 1
+                if block_index >= total_blocks:
+                    break
+
+        return bigMatrix
     
-dc = Decompression()
-sample_mat = [0,1,4,0,6,12,13,14,0,4,5,6,0,6,4,3]
-sample_mat2 = \
-            [[0,1,4,5],
-             [6,12,13,14],
-             [5,7,2,1,],
-             [7,8,9,10]]
+    def blockIDCT(self, block):
+    # Apply 2D inverse DCT
+        return idct(idct(block.T, norm='ortho').T, norm='ortho') + 128
+    
+    def IDCT(self,target):
+        IDCT_target = np.zeros_like(target)
+        for i in range(0, target.shape[0], 8):
+            for j in range(0, target.shape[1], 8):
+                IDCT_target[i:i+8,j:j+8] = self.blockIDCT(target[i:i+8,j:j+8]) * Quantization_table
+        return IDCT_target
+    
 
-traversedsamp = Op.zigzag_traversal(sample_mat2)
-print(traversedsamp)
-inversed = dc.inverse_zigzag(traversedsamp,4)
-# unpackedimgData = dc.unPack0FromList(imgdata)
-# print(DCT_padded.size , "-->" , len(unpackedimgData))
-print(inversed)
+
+
+
+dc = Decompression()
+unpackedImgData = dc.unPack0FromList(imgdata)  # your input list
+ImageBlocks = dc.reconstruct_imageblocks(unpackedImgData, PaddedRow, PaddedCol)
+ImageBlocks = np.array(ImageBlocks, dtype=float)
+
+print(DCT_padded[16:32,16:32])
+print("-"*1000)
+print(ImageBlocks[16:32,16:32])
+DecompressedIDCT = dc.IDCT(ImageBlocks)
+img = Image.fromarray(DecompressedIDCT)
+img.show()
 
