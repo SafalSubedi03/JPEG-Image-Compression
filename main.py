@@ -5,9 +5,6 @@ from scipy.fftpack import dct
 from scipy.fftpack import idct
 import matplotlib.pyplot as plt
 
-
-
-
 Quantization_table = \
 [[1, 1, 1, 1, 1, 1, 1, 1],
  [1, 1, 1, 1, 1, 1, 1, 1],
@@ -20,16 +17,18 @@ Quantization_table = \
 
 
 
-# Quantanization_table = \
-# [[ 2,  2,  2,  4,  6, 10, 14, 16],
-#  [ 2,  2,  4,  4,  8, 14, 16, 14],
-#  [ 2,  4,  4,  6, 10, 16, 18, 14],
-#  [ 4,  4,  6,  8, 14, 44, 62, 18],
-#  [ 6,  8, 10, 14, 18, 50, 48, 64],
-#  [10, 14, 16, 64, 46, 48, 52, 44],
-#  [14, 16, 18, 64, 48, 52, 52, 46],
-#  [16, 14, 14, 18, 64, 44, 46, 46]
-# ]
+
+Quantization_table = [
+ [1, 1, 1, 1, 2, 2, 3, 3],
+ [1, 1, 1, 2, 2, 3, 3, 3],
+ [1, 1, 2, 2, 3, 3, 3, 3],
+ [1, 2, 2, 3, 3, 4, 4, 3],
+ [2, 2, 3, 3, 3, 4, 4, 4],
+ [2, 3, 3, 4, 4, 4, 4, 4],
+ [3, 3, 3, 4, 4, 4, 4, 4],
+ [3, 3, 3, 3, 4, 4, 4, 4]
+]
+
 
 # Quantanization_table = [
 #  [ 8,  8,  8, 16, 24, 40, 56, 64],
@@ -65,10 +64,7 @@ class wrangling:
                 downsampled[i//2,j//2] = (img[i+0,j+0] + img[i+0,j+1]+ img[i+1,j+0]+ img[i+1,j+1]) / 4 
         return downsampled
     
-    def blockDCT(self, block):
-        block = block.astype(float) - 128
-        return dct(dct(block.T, norm='ortho').T, norm='ortho')
-
+    
     
     def zigzag_traversal(self, matrix):
         n = len(matrix)
@@ -95,39 +91,36 @@ class wrangling:
 
         return result
 
-    #Conversion from 2D array to 1D list with packed 0s
-    def count(self, res):
-        ptr0 = 0
-        ptr1 = 1
+    
+    def pack0ToList(self, res):
+        """
+        Pack consecutive zeros into [0, count] markers.
+        Encoding scheme:
+        - For non-zero values, append the value.
+        - For a run of k zeros (k >= 1), append [0, k].
+        This is applied to the whole flattened list.
+        """
         ans = []
-
-        while ptr1 < len(res):
-
-            if res[ptr1] != 0:
-                ans.append(res[ptr0])
-                ptr0 += 1
-                ptr1 += 1
-                continue
-
-            ans.append(res[ptr0])
-            ans.append(0)
-
-            # Move ptr1 forward until non-zero (safe order!)
-            while ptr1 < len(res) and res[ptr1] == 0:
-                ptr1 += 1
-
-            # Distance of zero streak
-            ans.append(ptr1 - ptr0 -1)
-
-            # Move ptr0 to ptr1
-            ptr0 = ptr1
-            ptr1 = ptr0 + 1
-
-        # Handle last element (if not processed)
-        if ptr0 < len(res):
-            ans.append(res[ptr0])
-
+        i = 0
+        n = len(res)
+        while i < n:
+            if res[i] == 0:
+                # count consecutive zeros starting at i
+                j = i
+                while j < n and res[j] == 0:
+                    j += 1
+                count = j - i
+                ans.extend([0, count])
+                i = j
+            else:
+                ans.append(res[i])
+                i += 1
         return ans
+
+  
+    def blockDCT(self, block):
+        block = block.astype(float) - 128
+        return dct(dct(block.T, norm='ortho').T, norm='ortho')
 
 
     def PaddingAndDCT(self,padded):
@@ -138,25 +131,26 @@ class wrangling:
         return DCT_padded
 
     def pad(self, to_pad,x,y):
-        
         pad_x = (8 - x % 8) % 8
         pad_y = (8 - y % 8) % 8
         return np.pad(to_pad, ((0,pad_x),(0,pad_y)), mode='constant', constant_values=0),x+pad_x,y+pad_y
 
     def blockify(self,mat):
+        traversed8_8 = np.zeros(64,dtype=float)
         ans = []
+        tem = []
         for i in range(0, mat.shape[0], 8):
             for j in range(0, mat.shape[1], 8):
                 # print(mat[i:i+8,j:j+8])
-                zt = self.zigzag_traversal(mat[i:i+8,j:j+8])
-                cnt = self.count(zt)
-                ans.extend(cnt)
-        return ans
+                traversed8_8 = self.zigzag_traversal(mat[i:i+8,j:j+8])
+                tem.extend(traversed8_8)
+                ans.extend(self.pack0ToList(traversed8_8))
+        return ans,tem
 
 
 
 #Image as input
-image = Image.open("demo2.png")
+image = Image.open("trial.png")
 image_rgb = image.convert("RGB")
 image_array = np.array(image_rgb)
 
@@ -165,26 +159,25 @@ Op = wrangling()
 Y,Cb,Cr = Op.ColorSpaceConversion(image_array)
 Downsampled_Cb = Op.Downsampling(Cb)
 Downsampled_Cr = Op.Downsampling(Cr)
-img = Image.fromarray(Downsampled_Cb)
-
 
 
 target = Y
-
 #Step:2 DCT and quantanization 
 OriginalRow,OriginalCol = target.shape[0:2] #Preserving the dimension of the target before padding
-
 #Using scippy fft to perform DCT
 # DCT Padded    - DCT on the paded target where target  can by Y Cb or Cr. The padding is done so that we can have 8*8 blocks of whole image
 # DCT          - Actual Discrete Cosine Transform of the whole picture
 # imgdata      - Compressed Image Data
 
 target_padded,PaddedRow,PaddedCol = Op.pad(target,OriginalRow,OriginalCol)
+# print(OriginalRow,OriginalCol,"Padded to ---->",target_padded.shape)
 DCT_padded = Op.PaddingAndDCT(target_padded)
 DCT = DCT_padded[:OriginalRow,:OriginalCol]
-
+print("size",DCT_padded.size)
 #image = Image.fromarray(DCT)
-imgdata = Op.blockify(DCT_padded)
+imgdata,upack0 = Op.blockify(DCT_padded)
+imgdata = np.array(imgdata,dtype=float)
+upack0  = np.array(upack0,dtype=float)
 print(f"{DCT_padded.size} --> {len(imgdata)}")
 print("Compression ratio ",  len(imgdata)/DCT_padded.size)
 
@@ -223,17 +216,26 @@ img.show()
 
 class Decompression:
     def unPack0FromList(self, lst):
+        """
+        Decode the pack0ToList scheme above.
+        """
         arr = []
-        ptr0 = 0
-        while ptr0 < len(lst):
-            if ptr0 + 1 < len(lst) and lst[ptr0] == 0:
-                for i in range(int(lst[ptr0 + 1])):
-                    arr.append(0)
-                ptr0 += 2
+        i = 0
+        n = len(lst)
+        while i < n:
+            if lst[i] == 0:
+                # must have a count after it
+                if i + 1 >= n:
+                    raise ValueError("Malformed input to unPack0FromList: trailing 0 with no count")
+                count = int(lst[i+1])
+                if count > 0:
+                    arr.extend([0] * count)
+                i += 2
             else:
-                arr.append(lst[ptr0])
-                ptr0 += 1
+                arr.append(lst[i])
+                i += 1
         return arr
+
 
     def inverse_zigzag(self, arr, n):
         matrix = [[0]*n for _ in range(n)]
@@ -303,12 +305,14 @@ class Decompression:
 
 dc = Decompression()
 unpackedImgData = dc.unPack0FromList(imgdata)  # your input list
+unpackedImgData = np.array(unpackedImgData,dtype=float)
+
 ImageBlocks = dc.reconstruct_imageblocks(unpackedImgData, PaddedRow, PaddedCol)
 ImageBlocks = np.array(ImageBlocks, dtype=float)
 
-print(DCT_padded[16:32,16:32])
-print("-"*1000)
-print(ImageBlocks[16:32,16:32])
+# print(DCT_padded[16:32,16:32])
+# print("-"*1000)
+# print(ImageBlocks[16:32,16:32])
 DecompressedIDCT = dc.IDCT(ImageBlocks)
 img = Image.fromarray(DecompressedIDCT)
 img.show()
