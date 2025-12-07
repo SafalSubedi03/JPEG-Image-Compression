@@ -1,0 +1,5 @@
+This file will store the must have data to decompressed the image form compressed data 
+
+1. Original Padded image shape i.e resolution of the image after padding
+2. DCT coefficients 1D packed list of luminance and chrominance 
+
