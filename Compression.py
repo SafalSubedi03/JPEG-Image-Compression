@@ -6,6 +6,11 @@ from scipy.fftpack import idct
 import matplotlib.pyplot as plt
 from skimage.transform import resize
 
+#Image as input
+image = Image.open("demo2.png")
+image_rgb = image.convert("RGB")
+image_array = np.array(image_rgb)
+
 
 
 
@@ -44,7 +49,7 @@ Quantanization3 = [
  [64, 56, 56, 72, 256, 176, 184, 184]
 ]
 
-Quantization_table = {1:Quantization1,2:Quantization2,3:Quantization2}
+Quantization_table = {1:Quantization1,2:Quantization1,3:Quantization1}
 
 class wrangling:
     #Step:1 Color Space Conversion and Downsampling
@@ -152,10 +157,6 @@ class wrangling:
 
 
 
-#Image as input
-image = Image.open("demo2.png")
-image_rgb = image.convert("RGB")
-image_array = np.array(image_rgb)
 
 
 Op = wrangling()
@@ -195,5 +196,8 @@ for element in range(1, 4):
 avg_compression = sum(CompressionData.values()) / len(CompressionData)
 print(f"Average compression ratio: {avg_compression:.4f}")
 
+# Save all DCT coefficients and sizes to a single compressed file
+np.savez_compressed("compressed_imgdata.npz", **saved_data)
+print("Compressed data saved to compressed_imgdata.npz")
 
 
