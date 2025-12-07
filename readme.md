@@ -2,48 +2,36 @@
 
 ## Overview
 
-This repository contains a Python implementation of the **JPEG image compression algorithm**. The project demonstrates the core steps of JPEG compression, including color space conversion, chroma subsampling, block-based Discrete Cosine Transform (DCT), and quantization. It serves as an educational example for understanding image compression at a low level.
-
-The implementation uses **NumPy**, **Pillow**, and **SciPy** to handle image processing and DCT computation.
-
----
-
-## Features
-
-- **Color Space Conversion:** Converts RGB images into YCbCr color space to separate luminance and chrominance components.
-- **Chroma Subsampling:** Reduces the resolution of the Cb and Cr channels to exploit human visual perception.
-- **Block-based DCT:** Divides the image into 8×8 blocks and applies 2D DCT using SciPy's FFT-based implementation.
-- **Quantization:** Applies a custom quantization table to compress the frequency coefficients and reduce data size.
-- **Padding:** Handles images with dimensions not divisible by 8 by padding them appropriately.
+This project demonstrates a Python implementation of **JPEG image compression**. It includes color space conversion, chroma subsampling, block-based Discrete Cosine Transform (DCT), and quantization. The project uses **NumPy**, **Pillow**, and **SciPy**, and serves as an educational example of image compression.
 
 ---
 
 ## Project Structure
 
-- `main.py` – Python script implementing JPEG compression up to DCT and quantization.
-- `demo.png` – Example input image used for testing (user-supplied).
-- `README.md` – Project documentation.
-- `requirements.txt` – Python dependencies for environment setup.
+* `Compression.py` – Compresses an input image and stores the result in `compressed_imgdata.npz`.
+* `Decompression.py` – Loads `compressed_imgdata.npz` and reconstructs the image.
+* `demo.png` – Example input image.
+* `requirements.txt` – Python dependencies.
 
 ---
 
 ## Environment Setup
 
-1. **Create a virtual environment** (recommended):
+1. **Create a virtual environment**:
 
 ```bash
 python -m venv venv
-````
+```
 
 2. **Activate the environment**:
 
-* **Windows:**
+*Windows:*
 
 ```bash
 venv\Scripts\activate
 ```
 
-* **Linux / Mac:**
+*Linux/Mac:*
 
 ```bash
 source venv/bin/activate
@@ -55,27 +43,31 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-
 ---
 
 ## Usage
 
-1. Clone the repository:
+### Compression
+
+1. Open `Compression.py` and set the correct path to your input image.
+2. Run the script:
 
 ```bash
-git clone <repository_url>
-cd jpeg-compression-python
+python Compression.py
 ```
 
-2. Ensure the virtual environment is activated and dependencies are installed.
+3. The compressed data will be saved as `compressed_imgdata.npz`.
 
-3. Run the compression script:
+### Decompression
+
+1. Ensure `compressed_imgdata.npz` is present in the working directory.
+2. Run the script:
 
 ```bash
-python main.py
+python Decompression.py
 ```
 
-4. The script will display the downsampled chrominance channel and the quantized DCT coefficients of the luminance channel.
+3. The original image will be reconstructed from the compressed data.
 
 ---
 
@@ -90,32 +82,24 @@ Cr  = 0.5 * R - 0.4187 * G - 0.0813 * B + 128
 ```
 
 2. **Chroma Subsampling**
+   4:2:0 subsampling is applied by reducing the resolution of Cb and Cr channels by half in both dimensions.
 
-* 4:2:0 subsampling is applied by averaging each 2×2 block in the Cb and Cr channels.
-
-3. **DCT**
-
-* Each 8×8 block of the luminance channel is shifted by 128 and transformed using 2D DCT:
+3. **Block-based DCT**
+   Each 8×8 block is transformed using 2D DCT:
 
 ```python
 blockDCT = dct(dct(block.T, norm='ortho').T, norm='ortho')
 ```
 
 4. **Quantization**
-
-* The DCT coefficients are divided by a predefined quantization table to reduce data size and remove perceptually less important information.
-
----
-
-## Future Work
-
-* Implement **Huffman encoding** for entropy compression.
-* Implement **inverse JPEG** to reconstruct the image from quantized DCT coefficients.
-* Extend to full **color image reconstruction** with inverse chroma upsampling.
+   DCT coefficients are quantized using a predefined table to reduce data size and remove perceptually less important information.
 
 ---
 
+## Notes
 
+* **Compression.py** handles image compression and stores the result in `compressed_imgdata.npz`.
+* **Decompression.py** retrieves the compressed data and reconstructs the image.
+* The project currently supports grayscale and YCbCr channels; future work can include **Huffman encoding** and full **color reconstruction**.
 
-
-
+---
